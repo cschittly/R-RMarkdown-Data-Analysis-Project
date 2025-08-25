@@ -1,0 +1,1220 @@
+---
+title: "Projet Camille Schittly"
+output:
+  rmdformats::readthedown:
+    highlight: kate
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(cache = TRUE)
+```
+
+J'ai utilisé ce type de R Markdown avec ce package qui est nécessaire.
+
+```{r}
+#install.packages("rmdformats")
+```
+
+# Exercice 1
+
+# Question 1
+
+Voici quelque définitions que l'on utlisera dans la suite.
+
+On observe une série chronologique (appelée également série temporelle
+ou plus simplement chronique) si on observe une suite
+$\{x_t, t = 1, \ldots, T\}$ de réels où $t$ représente la date de la
+mesure d'une certaine quantité d'intérêt $Q$ et $x_t$ est la valeur de
+$Q$ à l'instant $t$.
+
+Une série temporelle est dite stationnaire si ses propriétés
+statistiques ne changent pas avec le temps. Formellement, une série
+temporelle $x_t$ est stationnaire si elle satisfait les conditions
+suivantes : - La moyenne $\mu_t$ est constante pour tout $t$. - La
+variance $\sigma_t^2$ est constante pour tout $t$. - La covariance
+$\text{Cov}(y_t, y_{t+k})$ entre $x_t$ et $x_{t+k}$ ne dépend pas de
+$t$.
+
+La tendance (ou trend) qui repr´esente l'évolution à long terme de la
+série. On la notera $T(t)$
+
+La composante saisonnière qui est responsable des "pics" et des "creux"
+sur le graphique et qui correspond à un phénomène qui se répète à
+intervalles de temps réguliers On la notera $S(t;p)$ et elle périodique
+de période $p$
+
+La composante d'erreur (ou de bruit) qui traduit des fluctuations
+aléatoires.
+
+## Etude par heure
+
+```{r}
+library(tidyverse)
+library(dplyr)
+
+df =read_csv("Germany.csv", na = c(":"),show_col_types = FALSE) 
+df = df %>% rename("heuremond" = "Datetime (UTC)") %>% rename("heureloc" = "Datetime (Local)") %>% rename("Prix" = "Price (EUR/MWhe)") %>% mutate(date = as.Date(heuremond))
+
+
+ggplot(data = df, aes(x = date, y = Prix)) +
+  geom_line() +
+  labs(title = "Série Temporelle par Heure",
+       x = "Année",
+       y = "Prix de l'électricité en Eur/MWhe") 
+
+```
+
+Il y a 24 observations par jours.
+
+
+### Tendance et saisonnalité
+
+Afin d'estimer la tendance et la saisonnalitée nous pouvons utliser le code suivant
+
+```{r}
+
+
+
+Xh = ts(data = df$Prix[1:500], frequency = 24) 
+df1 <- data.frame(Date = time(Xh), Prix = as.numeric(Xh))
+
+m = decompose(Xh) 
+ggplot(df1, aes(x = Date, y = Prix)) +
+  geom_line() +
+  labs(y = "Prix en Eur/MWhe", title = "Série Temporelle", x = "Jour")
+
+df_trend <- data.frame(Date = time(m$trend), Prix = as.numeric(m$trend))
+ggplot(df_trend, aes(x =Date, y = Prix)) +
+  geom_line() +
+  labs(y = "Prix en Eur/MWhe",title = "Tendance", x = "Jour")
+
+df_seasonal <- data.frame(Date = time(m$seasonal), Prix = as.numeric(m$seasonal))
+ggplot(df_seasonal, aes(x = Date, y = Prix)) +
+  geom_line() +
+  labs(y = "Prix en Eur/MWhe",title = "Composante Saisonnière", x = "Jour")
+
+```
+
+Ici je choisi une féquence de 24 comme il y a 24 données en heure dans
+la journée et je regarde le début de la série temporelle.
+
+Ainsi sur l'axe des abscisses, chaque numéro correspond à un jour écoulé.
+
+Pour cette partie on voit une tendance décroissante puis croissante
+
+Pour la saisonnalité, c'est assez claire qu'il y en ai une, il y a des
+variations cyclique qui se répetent à des intérvalles réguliers, ces
+intervalle sont en fait les 24h d'une journée.
+
+```{r}
+
+Xh2 = ts(data = df$Prix[1500:2000], frequency = 24) 
+df2 <- data.frame(Date = time(Xh2), Prix = as.numeric(Xh2))
+m = decompose(Xh2) 
+
+ggplot(df2, aes(x = Date, y = Prix)) +
+  geom_line() +
+  labs(title = "Série Temporelle", y = "Prix en Eur/MWhe", x = "Jour")
+
+df_trend <- data.frame(Date = time(m$trend), Prix = as.numeric(m$trend))
+ggplot(df_trend, aes(x = Date, y = Prix)) +
+  geom_line() +
+  labs(title = "Tendance", y = "Prix en Eur/MWhe", x = "Jour")
+
+df_seasonal <- data.frame(Date = time(m$seasonal), Prix = as.numeric(m$seasonal))
+ggplot(df_seasonal, aes(x = Date, y = Prix)) +
+  geom_line() +
+  labs(title = "Composante Saisonnière", y = "Prix en Eur/MWhe", x = "Jour")
+
+```
+
+J'ai refait le même processus pour un autre moment de la serie
+temporelle, la saisonnalitée est la même tandis que la tendance a changée,
+elle varie beaucoup plus.
+
+On peut avoir un lissage par moyenne mobile pour obtenir une
+estimation de la tendance.
+
+```{r}
+
+smoothed_data = c()
+k = c()
+h = 5000   #taille de la fenetre
+for (i in 1:length(df$Prix)){
+  begin =max(1, i - h/2)
+  end = min(length(df$Prix), i+h/2)
+  smoothed_data[i] = mean(df$Prix[begin:end])
+  k[i]= i
+}
+
+dfs <- data.frame(x = k, y = smoothed_data)
+
+
+ggplot(dfs, aes(x = k, y = smoothed_data)) +
+  geom_line() +  
+  labs(title = "Graphique de la serie temporelle avec lissage par moyenne mobile", y = "Prix en Eur/MWhe", x = "Heure")
+
+
+
+```
+
+```{r}
+
+Xh = ts(data = df$Prix, frequency = 24*365) 
+df3 <- data.frame(Date = time(Xh), Prix = as.numeric(Xh))
+m = decompose(Xh) 
+
+ggplot(df3, aes(x = Date, y = Prix)) +
+  geom_line() +
+  labs(title = "Série Temporelle", y = "Prix en Eur/MWhe", x = "Année")
+
+df_trend <- data.frame(Date = time(m$trend), Prix = as.numeric(m$trend))
+ggplot(df_trend, aes(x = Date, y = Prix)) +
+  geom_line() +
+  labs(title = "Tendance", y = "Prix en Eur/MWhe", x = "Année")
+
+df_seasonal <- data.frame(Date = time(m$seasonal), Prix = as.numeric(m$seasonal))
+ggplot(df_seasonal, aes(x = Date, y = Prix)) +
+  geom_line() +
+  labs(title = "Composante Saisonnière", y = "Prix en Eur/MWhe", x = "Année")
+```
+
+Maintenant nous pouvons un peu comprendre ce qu'il se passe.
+
+Ici je choisi une fréquence de $24\times 365$ afin que pour chaque
+numéro sur l'axe des abscisse représente une année
+
+Comme je choisi une fréquence en année, on peut constater qu'il y a un
+cycle dans la composante saisonnière chaque année.
+
+Pour la tendance elle est croissante puis décroissante.
+
+Il faut comprendre que le plus haut point se fait quand $x=8$ ce qui
+suggère le début de l'année 2023 (2015+8) car j'ai mis la frequence à
+l'année). En Allemagne ca représente environ 250 EUR/MWhe.
+
+Ceci a commencé quand $x=7$ soit en 2022.
+
+Le lien étant probablement la pandémie en 2020. Le prix de l'électricité
+à part ailleur explosé en 2023, en conséquence de la guerre en Ukraine.
+
+Ici comme les variations dans la série sont plus grandes lorsque la
+série est à un niveau élevé et plus petites lorsque la série est à un
+niveau bas, alors je considère que ce modèle n'est ni additif ni
+multiplicatif. Cela revient à dire que ce modèle présente des aspects
+des deux modèle et donc que l'on peut essayer de modeliser ce modèle à
+l'aide d'un modele ARIMA.
+
+C'est à dire que l'on ne peut pas reprsentée la série temporelle comme
+suit
+
+$$
+Y_t = T_t + S_t + C_t + \varepsilon_t
+$$
+
+ni comme suit :
+
+$$
+Y_t = T_t \times S_t \times C_t \times \varepsilon_t
+$$
+
+Avec :
+
+-    $Y_t$ est la valeur observée à un instant $t$.
+
+-    $T_t$ est la tendance à l'instant $t$.
+
+-    $S_t$ est la composante saisonnière à l'instant $t$.
+
+-    $C_t$ est la composante cyclique à l'instant $t$.
+
+-    $\varepsilon_t$ est le terme d'erreur aléatoire à l'instant $t$.
+
+### Autocorrélogramme
+
+```{r}
+
+Xh = ts(data = df$Prix, frequency = 24)  
+acf(Xh,lag.max=100)   
+```
+
+La fonction d'autocorrélation est périodique, ce qui indique une
+périodicité dans la série temporelle. La ligne pointillée bleue indique
+le niveau en-dessous duquel la corrélation n'est plus statistiquement
+significative.
+
+Le graphe des corrélations montre que les termes successifs de la suite
+sont très corrélés (et que donc il y a une tendance).
+
+Les Lags sont toujours significatif.
+
+De même les lags sont supérieur au trait bleu ce qui veut dire que ce
+n'est pas un bruit blanc
+
+De même on peut interpréter une saisonnalité, on regarde à chaque fois
+que le lags est le plus haut et combien de lags après on retrouve un
+lags haut mais plus petit que le premier lag haut. Ici je trouve une
+périodicité de 24, ce qui correspond à 24h. Ca peut faire sens étant
+donné que c'est possible que la consommation d'électricité en une
+journée se repète.
+
+```{r}
+length(df$Prix)
+Xh = ts(data = df$Prix[70000:80328], frequency = 24)  
+acf(Xh,lag.max=100) 
+```
+
+Je me suis dit que ca pouvait être intéressant de regarder la fin de la
+série.
+
+On voit qu'il y a la même chose.
+
+Une périodiscitée tout les 24h et des lags que signficatifs.
+
+### Autocorrélogramme partielle
+
+```{r}
+Xh = ts(data = df$Prix, frequency = 24) 
+pacf(Xh,lag.max=100) 
+
+```
+
+Ici on peut constater que les lags ne sont plus significatif de facon
+irrégulière, c'est donc difficile de déterminer quel modèle cette série
+temporelle suit.
+
+### Test de stationnarité
+
+Une série temporelle $Y_{t(t=1,2...)}$ est dite stationnaire (au sens
+faible) si ses propriétés statistiques ne varient pas dans le temps
+(espérance, variance, auto-corrélation).
+
+Test de Dickey-Fuller Test
+
+```{r}
+library(tseries) 
+adf.test(df$Prix, alternative = c("sta"))
+```
+
+$H_0$ : La série n'est pas stationnaire
+
+$H_1$ : la série est stationnaire
+
+p value = 0.01 $< \alpha$, on rejette $H_0$
+
+On peut donc considérer statistiquement que cette série est stationnaire.
+
+### Prédiction
+
+Afin de faire la prédiction nous pouvons utiliser le modele exponentiel.
+
+```{r}
+library(forecast)
+
+Xh = ts(data = df$Prix[50000:80328], frequency = 24)
+model1 <- ets(Xh)
+
+
+predictions1 <- forecast(model1, h = 500)
+
+
+plot(predictions1, xlim = c(1260,1290), ylim = c(-750,750), main = "prediction")
+```
+
+Voici la prédiction de très près pour montrer qu'on voit les petites
+variations, si l'on zoom pas on peut penser que c'est une droite
+
+```{r}
+library(forecast)
+
+
+Xh = ts(data = df$Prix, frequency = 24)
+model2 <- ets(Xh)
+
+
+predictions2 <- forecast(model2, h = 500)
+
+
+plot(predictions2, xlim = c(3348,3365),ylim = c(-750,750), main = "prédiction")
+```
+
+Voici la prédiction pour l'année 2024 avec le modele exponentiel
+
+L'une en prenant les données de la fin et l'autre en prenant toute les
+données.
+
+```{r}
+summary(model1)
+summary(model2)
+```
+
+Le BIC du premier modele est plus faible donc on peut se fier à celui là.
+
+Une critique de ce modèle est de constater que c'est une prédiction à
+très court terme, néanmoins l'avantage étant qu'il fonctionne facilement
+car il n'y a pas d'hypothèses à respecter afin de l'appliquer
+
+## Etude par jour
+
+Afin de faciliter le traitement des données je décide de mettre les
+données par jours
+
+```{r}
+library(tidyverse)
+library(Ecdat)
+
+dfj = df %>%
+  mutate(datm = as.Date(heuremond))  %>%
+  group_by(datm) %>%
+  summarise(Prixm = mean(Prix), .groups = "drop")
+
+
+library(forecast)
+
+
+library(ggplot2)
+
+
+# Créer le graphique avec ggplot
+ggplot(data = dfj, aes(x = datm, y = Prixm)) +
+  geom_line() +
+  labs(x = "Date en année", y = "Prix en Eur/MWhe", title = "Série temporelle")
+
+
+
+```
+
+### Tendance et saisonnalité
+
+Je vais refaire certaine étape afin de m'assurer des hypothèses que j'ai
+dite pour mon étude sur les heures.
+
+Je fais un lissage par moyenne mobile.
+
+```{r}
+smoothed_data = c()
+k = c()
+h = 200   #taille de la fenetre
+for (i in 1:length(dfj$Prixm)){
+  begin =max(1, i - h/2)
+  end = min(length(dfj$Prixm), i+h/2)
+  smoothed_data[i] = mean(dfj$Prixm[begin:end])
+  k[i]= i
+}
+
+dfs <- data.frame(x = k, y = smoothed_data)
+
+
+ggplot(dfs, aes(x = k, y = smoothed_data)) +
+  geom_line() +  
+  labs(title = "Graphique de la serie temporelle avec lissage par moyenne mobile", y = "Prix en Eur/MWhe", x = "Jour") + 
+  theme_minimal() 
+```
+
+On retrouve le même lissage que précedemment.
+
+```{r}
+
+X = ts(data = dfj$Prixm[1:100], frequency = 30)
+m = decompose(X)
+
+df1 <- data.frame(Date = time(X), Prix = as.numeric(X))
+
+ggplot(df1, aes(x = Date, y = Prix)) +
+  geom_line() +
+  labs(title = "Série Temporelle", x = "Mois", y ="Prix en Eur/MWhe")
+
+df_trend <- data.frame(Date = time(m$trend), Prix = as.numeric(m$trend))
+ggplot(df_trend, aes(x =Date, y = Prix)) +
+  geom_line() +
+  labs(title = "Tendance", x = "Mois", y ="Prix en Eur/MWhe")
+
+df_seasonal <- data.frame(Date = time(m$seasonal), Prix = as.numeric(m$seasonal))
+ggplot(df_seasonal, aes(x = Date, y = Prix)) +
+  geom_line() +
+  labs(title = "Composante Saisonnière", x = "Mois", y ="Prix en Eur/MWhe")
+```
+
+Pour cette partir on voit une tendance croissante puis décroissante,
+pour la saisonnalité, on voit que le cycle de variation se répete tout
+les mois, ce qui fait sens car si tout les 24h il y a une périodiscité,
+il en va de même pour les mois.
+
+```{r}
+
+X = ts(data = dfj$Prixm[2400:3347], frequency = 30)
+m = decompose(X)
+
+df1 <- data.frame(Date = time(X), Prix = as.numeric(X))
+
+ggplot(df1, aes(x = Date, y = Prix)) +
+  geom_line() +
+  labs(title = "Série Temporelle", x = "Mois", y ="Prix en Eur/MWhe")
+
+df_trend <- data.frame(Date = time(m$trend), Prix = as.numeric(m$trend))
+ggplot(df_trend, aes(x =Date, y = Prix)) +
+  geom_line() +
+  labs(title = "Tendance", x = "Mois", y ="Prix en Eur/MWhe")
+
+df_seasonal <- data.frame(Date = time(m$seasonal), Prix = as.numeric(m$seasonal))
+ggplot(df_seasonal, aes(x = Date, y = Prix)) +
+  geom_line() +
+  labs(title = "Composante Saisonnière", x = "Mois", y ="Prix en Eur/MWhe")
+```
+
+J'ai regardé la tendance et la saisonnalité sur la partie où les prix
+sont élevé sur la série temporelle et on constate qu'il y a bien une
+saisonnalitée au mois et que la tendance varie énormement, elle est
+croissante puis décroissante.
+
+```{r}
+
+Xj = ts(data = dfj$Prixm, frequency = 30*12)
+df2 <- data.frame(Date = time(Xj), Prix = as.numeric(Xj))
+m = decompose(Xj)
+ggplot(df2, aes(x = Date, y = Prix)) +
+  geom_line() +
+  labs(title = "Série Temporelle", x = "Mois", y ="Prix en Eur/MWhe")
+
+df_trend <- data.frame(Date = time(m$trend), Prix = as.numeric(m$trend))
+ggplot(df_trend, aes(x =Date, y = Prix)) +
+  geom_line() +
+  labs(title = "Tendance", x = "Mois", y ="Prix en Eur/MWhe")
+
+df_seasonal <- data.frame(Date = time(m$seasonal), Prix = as.numeric(m$seasonal))
+ggplot(df_seasonal, aes(x = Date, y = Prix)) +
+  geom_line() +
+  labs(title = "Composante Saisonnière", x = "Mois", y ="Prix en Eur/MWhe")
+```
+
+Maintenant nous pouvons un peut comprendre ce qu'il se passe
+
+Pour la saisonnalité c'est la même chose, le variations se reproduise.
+
+Pour la tendance, on en conclu la même chose que pour l'étude sur les
+heure. J'ai mis une fréquence de $30\times12$ afin d'avoir les années
+sur l'axe des abscisse. Le point le plus haut est en 8 comme avant soit en 2023.
+
+### Autocoréllogramme
+
+```{r}
+X = ts(data = dfj$Prixm, frequency = 30)
+acf(X,lag.max=25) 
+
+
+```
+
+La fonction d'autocorrélation est périodique, ce qui indique une
+périodicité dans la série temporelle. La ligne pointillée bleue indique
+le niveau en-dessous duquel la corrélation n'est plus statistiquement
+significative.
+
+De même les lags sont supérieur au trait bleu ce qui veut dire que ce
+n'est pas un bruit blanc
+
+### Autocorrélogramme partielle
+
+```{r}
+pacf(X,lag.max=15) 
+```
+
+### Test de stationnarité
+
+Une série temporelle Yt (t=1,2\...) est dite stationnaire (au sens
+faible) si ses propriétés statistiques ne varient pas dans le temps
+(espérance, variance, auto-corrélation). Un exemple de série temporaire
+stationnaire est le bruit blanc.
+
+Test de Dickey-Fuller Test
+
+```{r}
+library(tseries)
+adf.test(X, alternative = c("sta"))
+```
+
+$H_0$ : La série n'est pas stationnaire
+
+$H_1$ : la série est stationnaire
+
+On choisi un seuil $\alpha$ a 5%
+
+p value < $\alpha$, on rejette $H_0$
+
+# Prédiction
+
+Je souhaite faire une pérdiction pour l'année 2024, à l'aide de mes
+données par jours. Afin d'avoir des prédiction par mois, je choisi de
+mettre une fréquence par 30 jours soit en mois.
+
+```{r}
+
+length(dfj$Prixm)
+Xj = ts(dfj$Prixm, frequency= 30)
+
+sarima_model <-  arima(Xj, order = c(3, 1, 3), seasonal = list(order = c(0, 0, 1), period = 30))
+
+```
+
+```{r}
+
+library(forecast)
+predictions <- predict(sarima_model, n.ahead = 75) 
+
+plot(Xj, xlim = c(100,120),ylim = c(0,100),
+     xlab = "Temps", ylab = "Prix en Eur/MWhe", main = "Prévisions avec modèle ARIMA")
+lines(predictions$pred, col = "blue") 
+legend("topright", legend = c("Série temporelle", "Prévisions"), col = c("black", "blue"), lty = 1)
+
+
+print(predictions$pred)
+
+
+```
+
+Voici une prédiction par jour, le modèle est assez précis mais ne va pas très loin dans le temps.
+
+## Prédiction par Mois
+
+```{r}
+dfj$Mois <- format(dfj$datm,"%Y-%m")
+
+dfm = dfj %>% group_by(Mois) %>%
+  summarise(Prixmm = mean(Prixm), .groups = "drop")
+
+arima_model <-  arima(dfm$Prixmm, order = c(0, 1, 2))
+predictions <- predict(arima_model, n.ahead = 2)
+
+print(predictions$pred)
+
+
+```
+Voici la prédiction en mois.
+
+## Prédiction en année
+
+```{r}
+dfj$Annee <- format(dfj$datm,"%Y")
+
+dfa1 = dfj %>% group_by(Annee) %>%
+  summarise(Prixmm = mean(Prixm), .groups = "drop")
+
+dfa = dfa1 %>% filter(Annee != 2024)
+
+library(forecast)
+sarima_model <- auto.arima(dfa$Prixmm)
+model= ets(dfa$Prixmm)
+forecast_result <- forecast(model)
+print(forecast_result$mean[1])
+
+
+
+```
+Voici la prediction de l'année 2024 en ce basant sur les années d'avant.
+
+En somme on peut faire des prédictions sur l'année mais elle sera moins précise que celle par jour par exemple mais qui va pas loin, il faut aussi prendre en compte qu'on se base sur des moyenne ce qui rend la chose moins précise.
+
+Je vais donc regarder le modele SARIMA des données par jours pour voir la validité du modèle.
+
+
+
+### Validité du modèle
+
+```{r}
+library(stats)
+Xj2 = ts(dfj$Prixm, frequency= 30)
+
+sarima_model2 <-  arima(Xj2, order = c(3, 1, 3), seasonal = list(order = c(0, 0, 1), period = 30))
+
+residuals2 = residuals(sarima_model2, data=dfj)
+
+acf(residuals2)
+
+
+
+```
+
+Il n'y a pas autocorrélation des résidus
+
+```{r}
+qqnorm(residuals2)
+qqline(residuals2, col = "red")
+
+```
+
+Suit la droite de Henry sauf dans les queues de distributuion donc on
+peut considérer que ca suit une loi normale.
+
+```{r}
+
+
+plot(residuals2, pch = 16, col = "blue", xlab = "Observation", ylab = "Résidus",
+     main = "Dispersion des résidus")
+
+abline(h = 0, col = "red", lty = 2)
+
+hist(residuals2, col = "skyblue", main = "Histogramme des résidus", xlab = "Résidus")
+
+
+
+
+
+
+```
+
+En examinant le graphique, on regarde si les résidus ont une dispersion
+similaire autour de zéro sur l'ensemble des données. La dispersion des
+résidus semble est plus ou moins uniforme et similaire à travers au
+début des données, cela suggère que les variances sont égales au début.
+
+Ce qui rend ce modèle pas si adéquat est la présence de valeurs aberante en 2023.
+
+# Exercice 2
+
+## Importation des données
+
+Tout d'abord on importe les données
+
+```{r}
+library(tidyverse)
+library(readr)
+library(dplyr)
+
+
+dataair = read_csv("death-rate-from-air-pollution-per-100000.csv",na = c(":"), show_col_types = FALSE) 
+dataair = dataair %>% rename('deces'= `Deaths that are from all causes attributed to air pollution per 100,000 people, in both sexes aged age-standardized`
+)
+
+
+dataNRJ1 = read_csv("energy-consumption-by-source-and-country.csv", na = c(":"),show_col_types = FALSE)
+dataNRJ2 = dataNRJ1 %>% 
+  rename ('NRJsolaire' = `Solar consumption - TWh`) %>% rename('NRJvent'= `Wind consumption - TWh`)%>%rename('NRJautre'= `Other renewables (including geothermal and biomass) - TWh`) %>%rename('NRJbiocarb'= `Biofuels consumption - TWh`)%>%rename('NRJhydro'= `Hydro consumption - TWh`) %>%rename('NRJnucl'= `Nuclear consumption - TWh`) %>%rename('NRJgaz'= `Gas consumption - TWh`) %>% 
+  rename('NRJhuile'= `Oil consumption - TWh`) %>%rename('NRJcharbon'= `Coal consumption - TWh`)
+
+datapopu = read_csv("population-and-demography.csv", na = c(":"),show_col_types = FALSE)
+
+datapop1 = datapopu[,c(1,2,3)]
+
+
+```
+
+## Carte
+
+Voici une carte qui montre le nombre de décès attribués à la pollution
+de l'air, toutes causes confondues, pour 100 000 personnes, chez les
+deux sexes, ajusté selon l'âge standardisé en 2010
+
+```{r}
+
+library(ggplot2)
+library(dplyr)
+library(maps)
+
+dataair2010 = dataair %>% filter(Year == 2010)
+world_map = map_data("world")
+
+
+ggplot(data = dataair2010, aes(fill = deces, map_id = Entity)) +
+  geom_map(map = world_map, color = "black") +labs(title = "Nombre de décès attribués à la pollution de l'air, toutes causes confondues, pour 100 000 
+                  personnes, chez les deux sexes, ajusté selon l'âge standardisé en 2010")+
+  expand_limits(x = world_map$long, y = world_map$lat) +
+  scale_fill_gradient(name = "Décès", low = "lightblue", high = "darkblue") +
+  theme_void()
+
+
+
+```
+
+On peut constater que c'est en Afrique et en Asie qu'il y a le plus de
+dècès dû à la pollution de l'air.
+
+## Mettre à la bonne échelle
+
+Ici, nous n'avons pas les données par habitant donc il est important de
+changer les données.
+
+Pour la consommation d'énergie, nous avons les données pour le pays donc
+il faut le changer pour rendre les données par habitant
+
+```{r pressure}
+datapop =datapop1 %>% rename("Entity"= "Country name")
+# Étape 1 : Joindre les données avec les données de population
+dataNRJ3 <- full_join(dataNRJ2, datapop, by = c("Year", "Entity"))
+dataNRJ3
+
+# Étape 2 : Calculer les données par personne
+dataNRJppers1 <- dataNRJ3 %>%
+  mutate(NRJautre = NRJautre / Population)%>% mutate(NRJbiocarb = NRJbiocarb / Population) %>% mutate(NRJsolaire = NRJsolaire / Population) %>% mutate(NRJvent = NRJvent / Population) %>% mutate(NRJhydro = NRJhydro / Population ) %>% mutate(NRJnucl = NRJnucl / Population) %>% mutate(NRJgaz = NRJgaz / Population) %>% mutate(NRJcharbon = NRJcharbon / Population) %>% mutate(NRJhuile = NRJhuile / Population)
+dataNRJppers = dataNRJppers1[,c(1:12)]
+
+
+
+```
+
+De même pour les données concernant les decès dus à la pollution de
+l'air
+
+```{r}
+dataairppers <- dataair %>%
+  mutate(deces = deces /100000)
+```
+
+Maintenant que nous avons les données par habitant nous pouvons joindre
+les données pour les mettre dans un seul endroit.
+
+```{r}
+library(dplyr)
+
+datajoin =full_join(dataNRJppers, dataairppers,  by = c("Year", "Entity", "Code"))
+df = na.omit(datajoin)
+dfe = df %>% filter(Year== 2007 | Year == 2017 )
+df
+```
+
+## Densité du dèces
+
+On peut se poser la question de ce qu'est la densité du nombre de décès
+ainsi que les statistique descriptive.
+
+```{r}
+library(graphics)
+
+
+hist(df$deces, main = "Fréquence du nombre de décès dus 
+     à la pollution de l'air", xlab = "Nombre de décès", ylab = "Fréquence")
+
+# Ajouter la densité avec lines()
+lines(density(df$deces, na.rm = TRUE))
+
+
+```
+
+## Statistique descriptive
+
+```{r}
+summary(df)
+```
+
+## Représentation graphique
+
+On fait un nuage de points
+
+```{r}
+
+library(ggrepel)
+
+ggplot(df, aes(x = NRJautre + NRJbiocarb + NRJsolaire + NRJvent + NRJhydro + NRJnucl + NRJgaz +NRJcharbon + NRJhuile , y =deces)) + 
+  geom_point() + 
+  geom_text_repel(aes(label = Entity))+
+  geom_smooth(method = "lm", se = TRUE) +
+  xlab("Consommation d'énergie par habitant TWh/hab") +    
+  ylab("Nombre de décès par habitant") +       
+  labs(title = "Relation entre la consommation d'énergie et le nombre de décès ") 
+```
+
+Ici on peut constater que le nuage de point et la droite de régression
+ne coincide pas trop.
+
+## Régression linéaire
+
+Une facon de liées des variable quantitative et de faire une régression
+linéaire Ici on souhaite donner un modèle liant la mortatilité due à la
+pollution de l'air et la consomation par habitant de different type
+d'énergie.
+
+Voici le modèle de régression donné avec $p = 9$ :
+
+$$
+Y = \beta_0 + \sum_{j=1}^{9} \beta_j x_j + \epsilon
+$$
+
+où $Y$, $x_1, \ldots, x_9$, $\epsilon \in \mathbb{R}$, avec
+$p \in \mathbb{N}$ et $E[\epsilon] = 0$. On observe
+$\{ (Y_i, x_{i,1}, \ldots, x_{i,9}), 1 \leq i \leq n \}$ à partir duquel
+on veut estimer
+$(\beta_0, \beta_1, \ldots, \beta_9)^\top \in \mathbb{R}^{9+1}$.
+
+Voici le modèle de régression avec les notations de l'exercice:
+
+$$decès = \beta_0 + \beta_1 \times NRJautre + ... + \beta_9 \times NRJhuile + \epsilon$$
+Le coefficient $\beta_{0}$ (Intercept) nous indique la moyenne attendue
+de dèces lorsque toutes les variables explicatives sont nulles.
+
+Une régression linéaire doit vérifier plusieurs hypothèses :
+
+-   La linéarité du modèle
+-   La variance des résidus est constante $\sigma^2$ (homoscédasticité)
+-   Les résidus sont indépendants
+-   Les résidus sont issus d'une loi normales de moyenne nulle et de
+    variance $\sigma^2$
+
+Nous allons étudier ce modele avec les données concernant les pays.
+
+```{r}
+library(tidyverse) 
+library(dplyr) 
+library(broom)
+
+model = lm(formula =  deces ~ ((NRJautre) + (NRJbiocarb) + (NRJsolaire) + (NRJvent) + (NRJhydro) + (NRJnucl) + (NRJgaz) + (NRJcharbon) + (NRJhuile))   , data = df)
+
+
+summary(model)
+
+
+```
+
+```{r}
+confint(model)
+```
+
+## Sélection et interprétation du modèle
+
+### Interpretation
+
+Les écart-types nous permettent de décrire la précision de l'estimation
+des paramètres, plus la variance est faible plus l'estimateur est
+précis.
+
+#### Test de significativité globale du modèle
+
+$H_0$ : Absence de significativité globale des variables.
+
+$H_1$ : Significativité des variables
+
+Je choisi comme seuil, un seuil $\alpha$ de 5%.
+
+On a p-value \< 2.2e-16 \< 5% , on peut dire que l'on rejète $H_0$, à
+savoir le modèle est bien globalement significatif.
+
+### Interprétation des coefficients
+
+#### Significativité
+
+$H_0$ : Le coefficient est bien significativement différent de zéro
+
+$H_1$ : Le coefficient n'est pas significativement différent de zéro
+
+Je choisi un seuil $\alpha$ de 5%.
+
+Si la p-value est inférieure au seuil de significativité, alors on
+concluera que le paramètre est significativement différent de 0.
+
+Ainsi il y a un coefficiant non significatif d'un point de vue
+statistique à savoir NRJcharbon dont la p-value est de 0.519178 et
+NRJbiocarb avec une p-value de 0.236671
+
+#### Signe du coefficient
+
+Avec un modèle linéaire, le signe du coefficient associé à une variable
+indique le sens de l'effet de cette variable sur la variable à
+expliquer.Ici les coefficients de l'energie consommé sont souvent
+négatifs. Ce qui correspond à l'allure du nuage de point qui va vers le
+bas
+
+#### Qualité du modèle
+
+Nous regardons le $R^2_{aj}$,Ici il est de 0.4718 ce qui n'est pas très
+proche de 1
+
+## Ajustement
+
+```{r}
+model1aj = lm(formula =  deces ~ NRJautre  + NRJsolaire + NRJvent + NRJhydro + NRJnucl + NRJgaz  + NRJhuile   , data = df)
+
+
+summary(model1aj)
+```
+
+Ici la seule différence à noter est que les coefficiants sont maintenant
+significatif, néanmoins le $R^2$ est plus petit car un sous modèle a
+toujours un $R^2$ plus petit.
+
+## Test d'hypothèse
+
+Ce qui pourrait faire que le modèle n'est pas très bon est le fait que
+l'une des hypothèse ne soient pas vérifié.
+
+Nous allons utliser des graphiques afin de vérifier si les conditions
+d'application du modèle sont vérifier
+
+```{r}
+# Conditions d'application
+#par(mfrow=c(2,2))
+plot(model1aj)
+
+```
+
+### Normalité
+
+```{r}
+shapiro.test(residuals(model1aj))
+plot(model1aj,2)
+
+```
+
+Je choisi un seuil $\alpha = 0.01$
+
+Le test de shapiro indique une p-valeurs \< 2.2e-16
+
+La p-value est inférieur au niveau $\alpha$ choisi, alors l'hypotèse
+$H_0$ d'un échantillon provenant d'une population suit une loi normale
+est rejetée.
+
+Néanmoins comme il y a beaucoup d'observations on peut regarder le QQ
+plot, et voir que la majorité des points suivent la droite de Henry.
+
+### Indépendence des résidus
+
+```{r}
+
+library(see)
+library(car)
+
+acf(residuals(model1aj))
+
+
+
+```
+
+En regardant l'autocorrélogramme, on voit qu'il y a colinéarité entre
+les résidus.
+
+### Evaluation de l'hypothèse d'homogénéité des résidus
+
+```{r}
+
+plot(model1aj, 3) 
+ncvTest(model1aj)
+
+
+```
+
+$H0$: La population dont l'échantillon est tiré suit une distribution
+normale.
+
+$H1$: La population dont l'échantillon est tiré ne suit pas une
+distribution normale.
+
+Je choisi un seuil $\alpha$ de 1%
+
+La p-value est inférieur à 2.22e-16 donc plus petit que le seuil donc on
+rejette $H0$. On peut alors conclure que les données ne semblent pas
+provenir d'une population avec une distribution normale.
+
+De même par le graphique on voit que les résidues ne sont pas éparpié de
+facon homogène et que la ligne rouge ne forme pas une droite ce qui
+confirme l'idée.
+
+### Evaluation à posteriori de l'hypothèse de linéarité
+
+```{r}
+
+
+plot(model1aj,1)
+
+
+```
+
+Ici on devrait avoir une droite rouge mais ce n'est pas le cas et les
+résidus ne sont pas uniformément distribué de part et d'autre de 0, mais
+on pouvais déja voir au nuage de point que l'hypothèse de linéarité
+n'étais pas satisfaite.
+
+Ainsi le modèle présenté n'est pas très bon.
+
+On va chercher quelque chose de mieux.
+
+Déja la linéarité n'étais pas présente donc on peut trouver une
+transpforamation pour y remédier.
+
+De même il est difficile d'avoir les hypothèses de vérifié quand il y a
+énormement de valeur.
+
+Je décide donc de prendre le logarithme de ma variable à expliquer et de
+réduire le nombre de donnée en prenant l'année 2007 et 2017.
+
+```{r}
+
+
+library(ggrepel)
+# Créer le graphique
+ggplot(dfe, aes(x = NRJautre + NRJbiocarb + NRJsolaire + NRJvent + NRJhydro + NRJnucl + NRJgaz +NRJcharbon + NRJhuile , y =log(deces))) + 
+  geom_point() + 
+  geom_text_repel(aes(label = Entity))+
+  geom_smooth(method = "lm", se = TRUE) +
+  xlab("Consommation d'énergie par habitant TWh/hab") +    
+  ylab("Nombre de décès par habitant") +       
+  labs(title = "Relation entre la consommation d'énergie et le nombre de décès ") 
+  
+```
+
+```{r}
+library(tidyverse) 
+library(dplyr) 
+library(broom)
+
+model2 = lm(formula =  log(deces) ~ NRJautre + NRJbiocarb + NRJsolaire + NRJvent + NRJhydro + NRJnucl + NRJgaz + NRJcharbon + NRJhuile   , data = dfe)
+
+
+summary(model2)
+tidy(model2, conf.int=TRUE)
+
+
+```
+
+```{r}
+confint(model2)
+```
+
+## Sélection et interprétation du modèle
+
+## Interpretation
+
+Les écart-types nous permettent de décrire la précision de l'estimation
+des paramètres, plus la variance est faible plus l'estimateur est
+précis.
+
+### Test de significativité globale du modèle
+
+$H_0$ : Absence de significativité globale des variables.
+
+$H_1$ : Significativité des variables
+
+Je choisi comme seuil, un seuil $\alpha$ de 5%.
+
+On a $p-value \lt 2.2e-16 \lt 5$ %, on peut dire que l'on rejète $H_0$,
+à savoir le modèle est bien globalement significatif.
+
+### Interprétation des coefficients
+
+#### Significativité
+
+$H_0$ : Le coefficient est bien significativement différent de zéro
+
+$H_1$ : Le coefficient n'est pas significativement différent de zéro
+
+Je choisi un seuil $\alpha$ de 5%.
+
+Si la p-value est inférieure au seuil de significativité, alors on
+concluera que le paramètre est significativement différent de 0.
+
+#### Signe du coefficient
+
+Avec un modèle linéaire, le signe du coefficient associé à une variable
+indique le sens de l'effet de cette variable sur la variable à
+expliquer.Ici les coefficients de l'energie consommé sont souvent
+négatifs. Ce qui correspond à l'allure du nuage de point qui va vers le
+bas
+
+#### Qualité du modèle
+
+Nous regardons le $R^2_{aj}$,Ici il est de 0.6201 ce qui est mieux que
+précdemment.
+
+### Ajustement du modèle
+
+Je vais enlever les variable non significative avec la méthode du
+backward
+
+J'enleve d'abord NRJbiocarb, NRJgaz, NRJcharbon, et enfin NRJautre
+
+```{r}
+modelaj = lm(formula =  log(deces) ~ NRJsolaire + NRJvent + NRJhydro + NRJnucl  + NRJhuile   , data = dfe)
+
+
+summary(modelaj)
+```
+
+## Test d'hypothèse
+
+Nous allons utliser des graphiques afin de vérifier si les conditions
+d'application du modèle sont vérifier
+
+```{r}
+# Conditions d'application
+#par(mfrow=c(2,2))
+plot(modelaj)
+
+```
+
+### Normalité
+
+```{r}
+shapiro.test(residuals(modelaj))
+plot(modelaj,2)
+
+```
+
+Je choisi un seuil $\alpha = 0.01$
+
+Le test de shapiro indique une p-valeurs = 0.03359
+
+La p-value est supérieur au niveau $\alpha$ choisi, alors l'hypotèse
+$H_0$ d'un échantillon provenant d'une population suit une loi normale
+est conservée.
+
+De plus comme il y a beaucoup d'observations on peut regarder le QQ
+plot, et voir que la majorité des points suivent la droite de Henry ce
+qui est positif.
+
+### Indépendence des résidus
+
+```{r}
+
+library(see)
+library(car)
+
+acf(residuals(modelaj))
+car::vif(modelaj)
+
+```
+
+En regardant l'autocorrélogramme, les lags des résidus sont en dessous
+de la ligne bleue de la bande de confiance, cela veut dire que le modèle
+de régression linéaire multiple n'est pas affecté par l'autocorrélation
+des résidus à ces lags ce qui indique que l'on peut considérer
+l'independance des résidus.
+
+### Evaluation de l'hypothèse d'homogénéité des résidus
+
+```{r}
+
+plot(modelaj, 3) 
+ncvTest(modelaj)
+
+
+```
+
+$H0$: La population dont l'échantillon est tiré suit une distribution
+normale.
+
+$H1$: La population dont l'échantillon est tiré ne suit pas une
+distribution normale.
+
+Je choisi un seuil $\alpha$ de 1%
+
+La p-value est égale à 0.26059 donc plus grand que le seuil donc on
+conserve $H0$. On peut alors conclure que les données semblent provenir
+d'une population avec une distribution normale.
+
+De même par le graphique on voit que les résidues sont éparpié de facon
+homogène et que la ligne rouge ne forme une droite ce qui confirme
+l'idée.
+
+### Evaluation à posteriori de l'hypothèse de linéarité
+
+```{r}
+
+
+plot(modelaj,1)
+
+
+```
+
+Ici la ligne rouge se raproche d'une droite, donc on peut considérer que
+cette hypothèse est statisfaite.
+
+En conclusion ce modèle est bien meilleur que le modèle précedent.
